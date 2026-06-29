@@ -1,0 +1,86 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+*.pyc
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# C++ / CMake
+build/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.cmake
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Large files (models, datasets, weights)
+pre-trained_weights/
+converted_weights/
+fine-tuning_data/
+data_2ly_*/
+*.pth
+*.pt
+*.bin
+*.ckpt
+
+# Logs and outputs
+*.log
+outputs/
+results/
+
+# Temp files
+*.bak
+*.bak_*
+*.save
+.save
+
+# Virtual environments
+b200env/
+hellm-bert-env/
+
+# Build directories
+**/build/
+**/cmake_build/
+
+# Backup files
+*.backup
+*~
+.tmp/
