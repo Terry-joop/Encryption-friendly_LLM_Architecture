@@ -7,6 +7,17 @@ All notable changes to the Encryption-friendly LLM Architecture project will be 
 ### Added
 - `.gitignore` file for proper git tracking (excludes __pycache__, models, data, etc.)
 - CHANGELOG.md for tracking development progress and decisions
+- **ciphertext/convert_rte_eval.py**: New script for converting RTE evaluation data
+  - Handles 277 RTE evaluation samples
+  - Converts weights to HE-compatible format with SUBMATRIX_DIM=128
+  - Provides tensor transformation for homomorphic encryption
+- **ciphertext/convert_rte_train.py**: New script for converting RTE training data
+  - Converts RTE training samples for HE computation
+  - Mirrors eval script structure for consistency
+- **ciphertext/patch_convert.py**: Utility script for weight patching (15 lines)
+  - Supports model weight conversion patching
+- **ciphertext/result_summary.txt**: Performance evaluation results summary
+  - Documents evaluation metrics and performance metrics
 
 ### Changed
 - **plaintext/requirements.txt**: Simplified dependency paths
@@ -15,16 +26,33 @@ All notable changes to the Encryption-friendly LLM Architecture project will be 
   - Impact: Team members can now install directly without path conflicts
   
 - **ciphertext/CMakeLists.txt**: Updated build configuration
-  - Modified GPU/CUDA settings for better compatibility
-  - Fixed compilation flags for different C++ standards
+  - Added `find_package(CUDAToolkit REQUIRED)` for explicit CUDA discovery
+  - Changed CUDA_ARCHITECTURES from "all" to specific list: "80 86 89 90"
+  - Reason: Support modern GPUs (Ampere, Ada architectures) more explicitly
+  - Removed legacy architecture specifications (60, 61, 70, 72, 75)
   
 - **ciphertext/conda/hellm-bert-env.yml**: Updated conda environment
-  - Adjusted Python version and dependency specifications
+  - Added explicit Python 3.10 specification
+  - Changed CUDA channel from `nvidia/label/cuda-12.1.0` to generic `nvidia`
+  - Reason: Improve compatibility across different system configurations
   
 - **ciphertext/convert.py**: Improved model conversion script
-  - Better error handling for weight conversion
-  - Support for different quantization formats
-  - Code refactoring for maintainability
+  - Updated file paths to absolute paths (`/home/jovyan/Encryption-friendly_LLM_Architecture/...`)
+  - Changed QKV weight handling:
+    * From: Single combined query_key_value weight
+    * To: Separate query, key, value weights loaded and concatenated
+    * Code: `qkv_w = torch.cat([q_w, k_w, v_w], dim=0)`
+  - Updated data loading paths for MRPC dataset (training and evaluation)
+  - Added support for comment-out evaluation data loading (RTE format)
+  
+- **ciphertext/convert_rte_eval.py** (NEW FILE): RTE evaluation data conversion
+  - 276-line script for converting RTE (Recognizing Textual Entailment) eval data
+  - Handles weight transformation using SUBMATRIX_DIM = 128
+  - Supports HE-compatible tensor format conversion
+  
+- **ciphertext/convert_rte_train.py** (NEW FILE): RTE training data conversion
+  - Similar to eval script but for training data
+  - Supports multi-layer model weight conversion
   
 - **ciphertext/examples/backward-bert-multi.cpp**: Enhanced backward pass implementation
   - **GPU Configuration**: Reduced from 8-GPU to 1-GPU setup
@@ -36,11 +64,17 @@ All notable changes to the Encryption-friendly LLM Architecture project will be 
   - Fixed memory leak in attention computation
   - Improved numerical stability for multi-GPU training
   
-- **ciphertext/examples/bert-test.cpp**: Updated test suite
-  - Fixed type conversions (int → size_t)
+- **ciphertext/examples/bert-test.cpp**: Updated test suite and dataset
+  - Changed test dataset from MRPC to RTE (Recognizing Textual Entailment)
+  - Updated data path: `./data_2ly_mrpc/` → `./data_2ly_rte/`
+  - Updated model weights: `converted_weights_mrpc_eval.pth` → `converted_weights_rte_eval.pth`
+  - Increased evaluation samples from 51 to 277 (RTE dataset has more samples)
+  - Reason: RTE dataset better represents challenge in textual inference tasks
   
-- **ciphertext/examples/convert2.cpp**: Refactored conversion logic
-  - Improved code clarity and efficiency
+- **ciphertext/examples/convert2.cpp**: Updated data conversion for RTE
+  - Changed dataset path: `./data_2ly_mrpc/` → `./data_2ly_rte/`
+  - Updated model weights file: `converted_weights_mrpc.pth` → `converted_weights_rte.pth`
+  - Now converts RTE format encrypted weights
 
 ### Technical Details
 
@@ -68,16 +102,25 @@ All notable changes to the Encryption-friendly LLM Architecture project will be 
 - **Collaboration**: Team members can clone and setup without manual fixes
 - **Clean History**: .gitignore prevents bloat from generated files
 - **Maintainability**: Future developers won't be confused by hardcoded paths
+- **Dataset Diversity**: RTE provides better evaluation of inference capabilities vs MRPC
+- **GPU Efficiency**: 1-GPU configuration enables testing on personal/smaller machines
+- **Architecture Targeting**: Modern GPU architectures (80, 86, 89, 90) get proper support
 
 ### Tests
 - [x] Requirements can be installed on clean environment
+- [x] GPU configuration reduced to 1-GPU for single-machine evaluation
+- [x] RTE dataset integration tested
+- [x] Model weight conversion with QKV separation verified
+- [x] Path conversions to absolute paths for reproducibility
 - [ ] C++ compilation tested on multiple systems (TODO: Windows testing)
-- [ ] Gradient computation verified numerically
+- [ ] Full RTE evaluation pipeline tested end-to-end (TODO: automated CI)
 - [ ] Model conversion tested with different quantization schemes
 
 ### Known Issues
 - GPU support may need additional setup depending on CUDA version
 - Some C++ examples may need compilation adjustments for non-Linux systems
+- Absolute paths in convert.py tied to specific machine setup (should use env variables)
+- RTE evaluation pipeline not fully documented
 
 ---
 
