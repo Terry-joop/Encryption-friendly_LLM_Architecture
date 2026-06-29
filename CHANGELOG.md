@@ -282,3 +282,37 @@ for (int j = 0; j < 277; ++j)
 
 **Last Updated**: 2026-06-29
 **Status**: Local clone history and current 1-GPU RTE step/epoch configuration documented.
+
+## Follow-up Experiment - 2026-06-29
+
+### RTE 1-GPU Training Retry With 5 Epochs
+
+- Motivation:
+  - Previous local RTE/1-GPU experiment used `epo < 1` and produced lower-than-expected accuracy.
+  - This retry tests whether the reduced epoch count contributed to the accuracy drop.
+
+- Code change:
+  - File: `ciphertext/examples/backward-bert-multi.cpp`
+  - Changed training epoch loop from:
+    - `for (HEaaN::u64 epo = 0; epo < 1; epo++)`
+  - To:
+    - `for (HEaaN::u64 epo = 0; epo < 5; epo++)`
+
+- Configuration kept unchanged from the local RTE/1-GPU setup:
+  - `weight_pth = "./data_2ly_rte/"`
+  - `num_gpu = 1`
+  - `batch_size = 16`
+  - `task = "R"`
+  - `one_epo_step = 2480`
+  - `num_data = 2490`
+
+- Expected training schedule:
+  - `2480` HE training steps per epoch.
+  - `5` epochs total.
+  - `12400` HE training loop steps total.
+  - Optimizer updates occur every `16` steps.
+  - Expected optimizer update count: `155` per epoch, `775` total.
+
+- Runtime note:
+  - Previous log showed individual HE steps can take tens of seconds, so this run may take a long time.
+  - Experiment result and final accuracy should be appended here after the run completes.

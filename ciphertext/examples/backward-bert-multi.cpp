@@ -122,7 +122,7 @@ int main() {
     // QNLI
     // std::vector<HEaaN::u64> labels = HELLM::ModelArgs::QNLI_LABELS;
 
-    for (HEaaN::u64 epo = 0; epo < 1; epo++) {
+    for (HEaaN::u64 epo = 0; epo < 5; epo++) {
         if (rank == 0) {
             std::string path =
                 hemmer->getWeightPath() + std::to_string(epo) + "epo";
