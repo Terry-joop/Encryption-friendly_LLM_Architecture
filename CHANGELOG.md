@@ -27,6 +27,11 @@ All notable changes to the Encryption-friendly LLM Architecture project will be 
   - Code refactoring for maintainability
   
 - **ciphertext/examples/backward-bert-multi.cpp**: Enhanced backward pass implementation
+  - **GPU Configuration**: Reduced from 8-GPU to 1-GPU setup
+    * Changed `const int num_gpu = 8;` to `const int num_gpu = 1;`
+    * Adjusted batch_size calculation (now 16 instead of 2 per GPU)
+    * Added conditional logic for single GPU configuration
+    * Purpose: Enable evaluation on single GPU machines (MRPC HE eval, 1GPU modified run)
   - Added support for gradient accumulation
   - Fixed memory leak in attention computation
   - Improved numerical stability for multi-GPU training
