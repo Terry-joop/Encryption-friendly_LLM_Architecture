@@ -4,7 +4,7 @@ project(
   VERSION 0.0.1
   DESCRIPTION "Example c++ template project"
   LANGUAGES CXX)
-
+find_package(CUDAToolkit REQUIRED)
 set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)
@@ -27,12 +27,11 @@ if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
   # Warn if we bumped cmake version to 3.23+ but forgot to use
   # CUDA_ARCHITECTURES
   if(${CMAKE_VERSION} GREATER_EQUAL 3.23)
-    set(CMAKE_CUDA_ARCHITECTURES "all")
+    set(CMAKE_CUDA_ARCHITECTURES "80 86 89 90")
   endif()
   # Note that we include 80-virtual. This should be the latest major CUDA
   # architecture.
-  set(CMAKE_CUDA_ARCHITECTURES
-      "60-real;61-real;70-real;72-real;75-real;80;86-real;89-real")
+ 
 endif()
 enable_language(CUDA)
 find_package(CUDAToolkit REQUIRED)

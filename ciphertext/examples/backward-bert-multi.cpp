@@ -47,16 +47,16 @@ void deleteFolder(const std::string &folderPath) {
 
 int main() {
     static const std::string LORA_TYPE = "qkv";
-    const std::string weight_pth = "./data_2ly_mrpc/"; // Put the HE weight path used when running convert.py.
-    const int num_gpu = 8;
+    const std::string weight_pth = "./data_2ly_rte/"; // Put the HE weight path used when running convert.py.
+    const int num_gpu = 1;
     const int batch_size = static_cast<int>(16.0 / num_gpu);
     // { R : RTE, C : COLA, M : MRPC, S : STSB , T: SST2}
-    auto task = "M";
+    auto task = "R";
     // {RTE: 310, COLA: 1068, MRPC: 458, STSB: 718, SST2: 8418, QNLI: 13092 }
-    const HELLM::u64 one_epo_step = 458; // temp
+    const HELLM::u64 one_epo_step = 2480; // temp
     // {RTE: 2490, COLA: 8551, MRPC: 3668, STSB: 5749, SST2: 67349, QNLI:
     // 104743}
-    const int num_data = 3668; // temp
+    const int num_data = 2490; // temp
 
     auto *hemmer = new HELLM::HEMMer{HELLM::HEMMer::genHEMMerMultiGPU()};
     MPI_Barrier(MPI_COMM_WORLD);
@@ -68,7 +68,7 @@ int main() {
 
     int prompt_len = 128;
     auto container = torch::jit::load(
-        weight_pth + std::string("converted_weights_mrpc.pth"));
+        weight_pth + std::string("converted_weights_rte.pth"));
 
     auto start = std::chrono::high_resolution_clock::now();
     if (rank == 0) {
@@ -110,9 +110,9 @@ int main() {
     MPI_Barrier(MPI_COMM_WORLD);
 
     // MRPC
-    std::vector<HEaaN::u64> labels = HELLM::ModelArgs::MRPC_LABELS;
+    // std::vector<HEaaN::u64> labels = HELLM::ModelArgs::MRPC_LABELS;
     // RTE
-    // std::vector<HEaaN::u64> labels = HELLM::ModelArgs::RTE_LABELS;
+    std::vector<HEaaN::u64> labels = HELLM::ModelArgs::RTE_LABELS;
     //  COLA
     // std::vector<HEaaN::u64> labels = HELLM::ModelArgs::COLA_LABELS;
     // STSB
@@ -122,7 +122,7 @@ int main() {
     // QNLI
     // std::vector<HEaaN::u64> labels = HELLM::ModelArgs::QNLI_LABELS;
 
-    for (HEaaN::u64 epo = 0; epo < 5; epo++) {
+    for (HEaaN::u64 epo = 0; epo < 1; epo++) {
         if (rank == 0) {
             std::string path =
                 hemmer->getWeightPath() + std::to_string(epo) + "epo";
@@ -329,7 +329,28 @@ int main() {
                     std::cout << "num_step: " << num_step << std::endl;
                 }
                 // hard coding
-                if (rank < 3) {
+                if (num_gpu == 1) {
+                    {
+                        std::shared_ptr<HELLM::LoRA::LoraModule> lora_module_ =
+                            std::make_shared<HELLM::LoRA::LoraModule>(hemmer, 0);
+                        lora_module_->optimizerStep_bert(task, num_step);
+                    }
+                    {
+                        std::shared_ptr<HELLM::LoRA::LoraModule> lora_module_ =
+                            std::make_shared<HELLM::LoRA::LoraModule>(hemmer, 1);
+                        lora_module_->optimizerStep_bert(task, num_step);
+                    }
+                    {
+                        std::shared_ptr<HELLM::LoRA::LoraModule> lora_module_ =
+                            std::make_shared<HELLM::LoRA::LoraModule>(hemmer, 0);
+                        lora_module_->optimizerStep_head_bert(task, num_step);
+                    }
+                    {
+                        std::shared_ptr<HELLM::LoRA::LoraModule> lora_module_ =
+                            std::make_shared<HELLM::LoRA::LoraModule>(hemmer, 0);
+                        lora_module_->optimizerStep_head2_bert(task, num_step);
+                    }
+                } else if (rank < 3) {
                     std::shared_ptr<HELLM::LoRA::LoraModule> lora_module_ =
                         std::make_shared<HELLM::LoRA::LoraModule>(hemmer, 0);
                     lora_module_->optimizerStep_bert(task, num_step);

@@ -29,11 +29,11 @@ int main(int argc, char *argv[]) {
     // HELLM_PTH_PATH >> "./data/converted_weights.pth"
     // auto container = torch::jit::load(std::getenv("HELLM_PTH_PATH"));
     auto container =
-        torch::jit::load("./data_2ly_mrpc/converted_weights_mrpc.pth");
+        torch::jit::load("./data_2ly_rte/converted_weights_rte.pth");
 
     // HELLM_GEN_PTXT_PATH >> "./data/ptxt/"
     // std::string ptxt_path{std::getenv("HELLM_PTXT_PATH")};
-    std::string ptxt_path = "./data_2ly_mrpc/";
+    std::string ptxt_path = "./data_2ly_rte/";
     std::filesystem::create_directory(ptxt_path);
 
     /*  for (int i = 0 ; i < 1 ; ++i){

@@ -156,7 +156,7 @@ def main():
     #### `save_path` denotes the output weight path, which will be ####
     ####  used in the HE computation model.                         ####
     ####################################################################
-    save_path = "/home/jovyan/Encryption-friendly_LLM_Architecture/ciphertext/converted_weights/converted_model.pt"
+    save_path = "/home/jovyan/Encryption-friendly_LLM_Architecture/ciphertext/converted_weights/converted_weights_rte.pth"
 
     container = Container()
 
@@ -186,15 +186,15 @@ def main():
     #######################################################################################
     ## Torch path should be set as the same path in grad_test.py file,                   ##
     ## For example, since we set the train data set output path as                       ##
-    ## `mrpc_train_inputs/input(index)_2ly_mrpc.pth`, we set the path as the following   ##
+    ## `rte_train_inputs/input(index)_2ly_rte.pth`, we set the path as the following   ##
     ## The train/eval data are saved in plaintext/fine-tuning_data/. So, the target      ## 
     ## data path need to be set `plaintext/fine-tuning_data/(task)_train_inputs(masks)/  ##
     #######################################################################################
 
-    for i in range(0,3668):
-        inp = torch.load(f'/home/jovyan/Encryption-friendly_LLM_Architecture/plaintext/fine-tuning_data/mrpc_train_inputs/input{i}_2ly_mrpc.pth')
+    for i in range(0,2490):
+        inp = torch.load(f'/home/jovyan/Encryption-friendly_LLM_Architecture/plaintext/fine-tuning_data/rte_train_inputs/input{i}_2ly_rte.pth')
         container.add(f'input_{i}', inp)
-        inp = torch.load(f'/home/jovyan/Encryption-friendly_LLM_Architecture/plaintext/fine-tuning_data/mrpc_train_masks/mask{i}_2ly_mrpc.pth')
+        inp = torch.load(f'/home/jovyan/Encryption-friendly_LLM_Architecture/plaintext/fine-tuning_data/rte_train_masks/mask{i}_2ly_rte.pth')
         container.add(f'mask_{i}', inp)
 
 
@@ -210,14 +210,14 @@ def main():
     #################################################################################
     # Torch path should be set as the same path in grad_test.py file,              ##
     # For example, since we set the eval data output path as                       ##
-    # `mrpc_eval_masks/mask(index)_2ly_mrpc.pth`, we set the path as the following ##
+    # `mrpc_eval_masks/mask(index)_2ly_rte.pth`, we set the path as the following ##
     #################################################################################
 
     #MRPC
     """ for i in range(0,408):
-        inp = torch.load(f'/home/jovyan/Encryption-friendly_LLM_Architecture/plaintext/fine-tuning_data/mrpc_eval_inputs/input{i}_2ly_mrpc.pth')
+        inp = torch.load(f'/home/jovyan/Encryption-friendly_LLM_Architecture/plaintext/fine-tuning_data/mrpc_eval_inputs/input{i}_2ly_rte.pth')
         container.add(f'input_{i}', inp)
-        inp = torch.load(f'/home/jovyan/Encryption-friendly_LLM_Architecture/plaintext/fine-tuning_data/mrpc_eval_masks/mask{i}_2ly_mrpc.pth')
+        inp = torch.load(f'/home/jovyan/Encryption-friendly_LLM_Architecture/plaintext/fine-tuning_data/mrpc_eval_masks/mask{i}_2ly_rte.pth')
         container.add(f'mask_{i}', inp) """
 
 

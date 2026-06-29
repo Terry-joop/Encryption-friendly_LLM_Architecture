@@ -25,7 +25,7 @@ int main() {
     static const std::string LORA_TYPE = "qkv";
     // static const std::string LORA_TYPE = "";
 
-    static const std::string data_path = "./data_2ly_mrpc/";
+    static const std::string data_path = "./data_2ly_rte/";
 
     auto *hemmer = new HELLM::HEMMer{HELLM::HEMMer::genHEMMerMultiGPU()};
     MPI_Barrier(MPI_COMM_WORLD);
@@ -37,7 +37,7 @@ int main() {
 
     int prompt_len = 128;
     auto container = torch::jit::load(
-        data_path + std::string("converted_weights_mrpc_eval.pth"));
+        data_path + std::string("converted_weights_rte_eval.pth"));
 
     /* if (rank == 0) {
         for (int i = 0 ; i < 2 ; ++i) {
@@ -54,7 +54,7 @@ int main() {
     // RTE: 34 + 5
     // COLA: 130 + 3
     // QNLI: 682 + 7
-    for (int j = 0; j < 51; ++j) {
+    for (int j = 0; j < 277; ++j) {
         auto inp = torch::empty({prompt_len, HELLM::ModelArgs::DIM});
         auto input_name = "input_" + std::to_string(rank + size * j);
         auto tok_emb_w = container.attr(input_name).toTensor().transpose(0, 1);

@@ -1,0 +1,6 @@
+MRPC HE eval, 1GPU modified run
+num_eval_outputs = 408
+accuracy = 0.5147058823529411
+f1 = 0.5909090909090907
+true label counts = {0: 129, 1: 279}
+pred counts = {0: 203, 1: 205}
