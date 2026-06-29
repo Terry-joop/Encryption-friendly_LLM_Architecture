@@ -349,6 +349,12 @@ public:
     std::string getHEPath() { return he_path_; }
     std::string getWeightPath() { return weight_path_; }
     std::string getWeightTestPath() { return weight_test_path_; }
+    void setWeightPath(const std::string &weight_path) {
+        weight_path_ = weight_path;
+    }
+    void setWeightTestPath(const std::string &weight_test_path) {
+        weight_test_path_ = weight_test_path;
+    }
 
 private:
     int device_id_;
@@ -402,8 +408,8 @@ private:
 
     const std::string he_path_ = "./backward/he";
     const std::string torch_path_ = "./backward/torch";
-    const std::string weight_path_ = "./data_2ly_mrpc/";
-    const std::string weight_test_path_ = "./data_2ly_mrpc/";
+    std::string weight_path_ = "./data_2ly_mrpc/";
+    std::string weight_test_path_ = "./data_2ly_mrpc/";
 
 #ifdef HELLM_MULTIGPU
     int max_rank_;

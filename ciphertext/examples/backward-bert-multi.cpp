@@ -59,6 +59,8 @@ int main() {
     const int num_data = 2490; // temp
 
     auto *hemmer = new HELLM::HEMMer{HELLM::HEMMer::genHEMMerMultiGPU()};
+    hemmer->setWeightPath(weight_pth);
+    hemmer->setWeightTestPath(weight_pth);
     MPI_Barrier(MPI_COMM_WORLD);
 
     HELLM::TransformerBlock block{hemmer, weight_pth, weight_pth, 0};

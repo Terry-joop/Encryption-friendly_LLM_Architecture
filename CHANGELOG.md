@@ -316,3 +316,71 @@ for (int j = 0; j < 277; ++j)
 - Runtime note:
   - Previous log showed individual HE steps can take tens of seconds, so this run may take a long time.
   - Experiment result and final accuracy should be appended here after the run completes.
+
+## Follow-up Fix - 2026-06-29
+
+### RTE LoRA Path Fix and Snapshot Eval Support
+
+- Problem found after starting the first `rte_epoch5` retry:
+  - The training example used RTE base data via `weight_pth = "./data_2ly_rte/"`.
+  - LoRA encrypted weights were still saved/loaded through `HEMMer::getWeightPath()`.
+  - `HEMMer` defaulted that path to `"./data_2ly_mrpc/"`, so the already-running process was writing current LoRA state to the MRPC directory even though the task/data were RTE.
+
+- Interrupted run:
+  - Stopped tmux session `rte_epoch5` before it reached epoch 0 completion.
+  - The run was around step `95 / 2480` of epoch 0, so restarting was preferable to waiting several days with mixed RTE/MRPC paths.
+  - Preserved the old log at `ciphertext/train_rte_epoch5_tmux.log`.
+
+- Code changes:
+  - File: `ciphertext/include/HELLM/HEMMer.hpp`
+    - Added `setWeightPath(...)` and `setWeightTestPath(...)`.
+    - Changed `weight_path_` and `weight_test_path_` from fixed `const std::string` defaults to configurable strings.
+  - File: `ciphertext/examples/backward-bert-multi.cpp`
+    - After constructing `HEMMer`, explicitly set both LoRA paths to `weight_pth`:
+      - `hemmer->setWeightPath(weight_pth);`
+      - `hemmer->setWeightTestPath(weight_pth);`
+    - This makes new RTE training write LoRA files under `./data_2ly_rte/`, including epoch snapshots such as `./data_2ly_rte/0epo/`.
+  - File: `ciphertext/examples/bert-test.cpp`
+    - Added an optional command-line LoRA snapshot path.
+    - Default eval still uses `./data_2ly_rte/`.
+    - Passing `./data_2ly_rte/0epo/` makes eval load the epoch-0 snapshot LoRA weights while keeping the RTE eval container/base weights from `./data_2ly_rte/`.
+    - Eval now prints the base data path and LoRA snapshot path at startup.
+
+- Build verification:
+  - Rebuilt successfully with:
+    - `cmake --build build -j --target eval train`
+  - Rebuilt binaries:
+    - `ciphertext/build/bin/train`
+    - `ciphertext/build/bin/eval`
+
+- Fixed experiment restart:
+  - Started a new tmux session:
+    - `rte_epoch5_fixed`
+  - Fixed run log:
+    - `ciphertext/train_rte_epoch5_fixed_tmux.log`
+  - Runner:
+    - `/tmp/run_rte_epoch5.sh`
+  - The fixed run uses the rebuilt `./build/bin/train`, so new LoRA writes should go to `./data_2ly_rte/`.
+
+- How to monitor:
+  - Attach:
+    - `/home/jovyan/Encryption-friendly_LLM_Architecture/ciphertext/hellm-bert-env/bin/tmux attach -t rte_epoch5_fixed`
+  - Detach:
+    - `Ctrl+b`, then `d`
+  - Tail log:
+    - `tail -f ciphertext/train_rte_epoch5_fixed_tmux.log`
+
+- How to run intermediate eval after an epoch snapshot exists:
+  - Epoch 0 snapshot:
+    - `cd /home/jovyan/Encryption-friendly_LLM_Architecture/ciphertext`
+    - `export HELLM_KEY_PATH=./key`
+    - `/home/jovyan/Encryption-friendly_LLM_Architecture/ciphertext/hellm-bert-env/bin/mpirun -np 1 ./build/bin/eval ./data_2ly_rte/0epo/`
+  - Later epochs follow the same pattern:
+    - `./data_2ly_rte/1epo/`
+    - `./data_2ly_rte/2epo/`
+    - `./data_2ly_rte/3epo/`
+    - `./data_2ly_rte/4epo/`
+
+- Important note:
+  - Source/build changes do not alter an already-running `./build/bin/train` process.
+  - Any run started before this fix may still use the old compiled path behavior.

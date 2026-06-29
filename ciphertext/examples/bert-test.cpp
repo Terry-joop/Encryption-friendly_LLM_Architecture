@@ -21,19 +21,40 @@
 
 #include <mpi.h>
 
-int main() {
+namespace {
+
+std::string withTrailingSlash(std::string path) {
+    if (!path.empty() && path.back() != '/') {
+        path += '/';
+    }
+    return path;
+}
+
+} // namespace
+
+int main(int argc, char *argv[]) {
     static const std::string LORA_TYPE = "qkv";
     // static const std::string LORA_TYPE = "";
 
     static const std::string data_path = "./data_2ly_rte/";
+    std::string lora_path = data_path;
+    if (argc > 1) {
+        lora_path = withTrailingSlash(argv[1]);
+    }
 
     auto *hemmer = new HELLM::HEMMer{HELLM::HEMMer::genHEMMerMultiGPU()};
+    hemmer->setWeightPath(lora_path);
+    hemmer->setWeightTestPath(lora_path);
     MPI_Barrier(MPI_COMM_WORLD);
 
     HELLM::TransformerBlock block{hemmer, data_path, data_path, 0};
     int rank = hemmer->getRank();
     int size = hemmer->getMaxRank();
     std::cout << "rank " << rank << " max rank " << size << std::endl;
+    if (rank == 0) {
+        std::cout << "eval data path: " << data_path << std::endl;
+        std::cout << "LoRA snapshot path: " << lora_path << std::endl;
+    }
 
     int prompt_len = 128;
     auto container = torch::jit::load(
