@@ -23,11 +23,108 @@
 #include <mpi.h>
 
 #include <algorithm>
+#include <cctype>
+#include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <iostream>
 #include <random>
+#include <stdexcept>
+#include <string>
+#include <vector>
 
 namespace fs = std::filesystem;
+
+namespace {
+
+std::string toUpper(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char ch) { return std::toupper(ch); });
+    return value;
+}
+
+std::string withTrailingSlash(std::string path) {
+    if (!path.empty() && path.back() != '/') {
+        path += '/';
+    }
+    return path;
+}
+
+std::string getEnvString(const char *name, const std::string &default_value) {
+    const char *value = std::getenv(name);
+    if (value == nullptr || std::string(value).empty()) {
+        return default_value;
+    }
+    return value;
+}
+
+int getEnvInt(const char *name, int default_value) {
+    const char *value = std::getenv(name);
+    if (value == nullptr || std::string(value).empty()) {
+        return default_value;
+    }
+    return std::stoi(value);
+}
+
+HELLM::u64 getEnvU64(const char *name, HELLM::u64 default_value) {
+    const char *value = std::getenv(name);
+    if (value == nullptr || std::string(value).empty()) {
+        return default_value;
+    }
+    return static_cast<HELLM::u64>(std::stoull(value));
+}
+
+struct TaskConfig {
+    std::string name;
+    std::string code;
+    std::string weight_path;
+    std::string train_container;
+    int num_data;
+    HELLM::u64 default_steps_per_epoch;
+    std::vector<HEaaN::u64> labels;
+};
+
+TaskConfig getTaskConfig() {
+    std::string task = toUpper(getEnvString("HELLM_TASK", "RTE"));
+
+    if (task == "R") {
+        task = "RTE";
+    } else if (task == "M") {
+        task = "MRPC";
+    } else if (task == "C") {
+        task = "COLA";
+    } else if (task == "T") {
+        task = "SST2";
+    } else if (task == "Q") {
+        task = "QNLI";
+    }
+
+    if (task == "RTE") {
+        return {"RTE", "R", "./data_2ly_rte/", "converted_weights_rte.pth",
+                2490, 2480, HELLM::ModelArgs::RTE_LABELS};
+    }
+    if (task == "MRPC") {
+        return {"MRPC", "M", "./data_2ly_mrpc/", "converted_weights_mrpc.pth",
+                3668, 3664, HELLM::ModelArgs::MRPC_LABELS};
+    }
+    if (task == "COLA") {
+        return {"COLA", "C", "./data_2ly_cola/", "converted_weights_cola.pth",
+                8551, 8544, HELLM::ModelArgs::COLA_LABELS};
+    }
+    if (task == "SST2") {
+        return {"SST2", "T", "./data_2ly_sst2/", "converted_weights_sst2.pth",
+                67349, 67344, HELLM::ModelArgs::SST2_LABELS};
+    }
+    if (task == "QNLI") {
+        return {"QNLI", "Q", "./data_2ly_qnli/", "converted_weights_qnli.pth",
+                104743, 104736, HELLM::ModelArgs::QNLI_LABELS};
+    }
+
+    throw std::invalid_argument(
+        "Unsupported HELLM_TASK. Use RTE, MRPC, COLA, SST2, or QNLI.");
+}
+
+} // namespace
 
 void deleteFolder(const std::string &folderPath) {
     if (fs::exists(folderPath) && fs::is_directory(folderPath)) {
@@ -47,16 +144,28 @@ void deleteFolder(const std::string &folderPath) {
 
 int main() {
     static const std::string LORA_TYPE = "qkv";
-    const std::string weight_pth = "./data_2ly_rte/"; // Put the HE weight path used when running convert.py.
-    const int num_gpu = 1;
-    const int batch_size = static_cast<int>(16.0 / num_gpu);
-    // { R : RTE, C : COLA, M : MRPC, S : STSB , T: SST2}
-    auto task = "R";
-    // {RTE: 310, COLA: 1068, MRPC: 458, STSB: 718, SST2: 8418, QNLI: 13092 }
-    const HELLM::u64 one_epo_step = 2480; // temp
-    // {RTE: 2490, COLA: 8551, MRPC: 3668, STSB: 5749, SST2: 67349, QNLI:
-    // 104743}
-    const int num_data = 2490; // temp
+    const TaskConfig config = getTaskConfig();
+    const std::string weight_pth =
+        withTrailingSlash(getEnvString("HELLM_WEIGHT_PATH", config.weight_path));
+    const std::string task = config.code;
+    const int num_gpu = getEnvInt("HELLM_NUM_GPU", 1);
+    const int batch_size = getEnvInt("HELLM_BATCH_SIZE", static_cast<int>(16.0 / num_gpu));
+    const HELLM::u64 num_epochs = getEnvU64("HELLM_EPOCHS", 5);
+    const HELLM::u64 one_epo_step =
+        getEnvU64("HELLM_STEPS_PER_EPOCH", config.default_steps_per_epoch);
+    const int num_data = config.num_data;
+    const int train_subset = getEnvInt("HELLM_TRAIN_SUBSET", num_data);
+    const int seed = getEnvInt("HELLM_SEED", -1);
+
+    if (num_gpu <= 0 || batch_size <= 0 || train_subset <= 0 ||
+        train_subset > num_data) {
+        throw std::invalid_argument("Invalid HELLM_NUM_GPU, HELLM_BATCH_SIZE, or HELLM_TRAIN_SUBSET.");
+    }
+    if (one_epo_step * static_cast<HELLM::u64>(num_gpu) >
+        static_cast<HELLM::u64>(train_subset)) {
+        throw std::invalid_argument(
+            "HELLM_STEPS_PER_EPOCH * HELLM_NUM_GPU must fit inside the selected train subset.");
+    }
 
     auto *hemmer = new HELLM::HEMMer{HELLM::HEMMer::genHEMMerMultiGPU()};
     hemmer->setWeightPath(weight_pth);
@@ -68,9 +177,21 @@ int main() {
     int rank = hemmer->getRank();
     int size = hemmer->getMaxRank();
 
+    if (rank == 0) {
+        std::cout << "task: " << config.name << " (" << task << ")" << std::endl;
+        std::cout << "weight path: " << weight_pth << std::endl;
+        std::cout << "train container: " << config.train_container << std::endl;
+        std::cout << "num_gpu: " << num_gpu << std::endl;
+        std::cout << "batch_size: " << batch_size << std::endl;
+        std::cout << "epochs: " << num_epochs << std::endl;
+        std::cout << "steps_per_epoch: " << one_epo_step << std::endl;
+        std::cout << "num_data: " << num_data << std::endl;
+        std::cout << "train_subset: " << train_subset << std::endl;
+        std::cout << "seed: " << seed << std::endl;
+    }
+
     int prompt_len = 128;
-    auto container = torch::jit::load(
-        weight_pth + std::string("converted_weights_rte.pth"));
+    auto container = torch::jit::load(weight_pth + config.train_container);
 
     auto start = std::chrono::high_resolution_clock::now();
     if (rank == 0) {
@@ -111,20 +232,9 @@ int main() {
     HEaaN::CudaTools::cudaDeviceSynchronize();
     MPI_Barrier(MPI_COMM_WORLD);
 
-    // MRPC
-    // std::vector<HEaaN::u64> labels = HELLM::ModelArgs::MRPC_LABELS;
-    // RTE
-    std::vector<HEaaN::u64> labels = HELLM::ModelArgs::RTE_LABELS;
-    //  COLA
-    // std::vector<HEaaN::u64> labels = HELLM::ModelArgs::COLA_LABELS;
-    // STSB
-    // std::vector<double> labels = HELLM::ModelArgs::STSB_LABELS;
-    // SST2
-    // std::vector<HEaaN::u64> labels = HELLM::ModelArgs::SST2_LABELS;
-    // QNLI
-    // std::vector<HEaaN::u64> labels = HELLM::ModelArgs::QNLI_LABELS;
+    std::vector<HEaaN::u64> labels = config.labels;
 
-    for (HEaaN::u64 epo = 0; epo < 5; epo++) {
+    for (HEaaN::u64 epo = 0; epo < num_epochs; epo++) {
         if (rank == 0) {
             std::string path =
                 hemmer->getWeightPath() + std::to_string(epo) + "epo";
@@ -146,11 +256,17 @@ int main() {
             for (int i = 0; i < num_data; ++i) {
                 rand_numbers[i] = i;
             }
-            std::random_device rd;
-            std::mt19937 g(rd());
-            std::shuffle(rand_numbers.begin(), rand_numbers.end(), g);
+            if (seed >= 0) {
+                std::mt19937 g(static_cast<unsigned int>(seed + epo));
+                std::shuffle(rand_numbers.begin(), rand_numbers.end(), g);
+            } else {
+                std::random_device rd;
+                std::mt19937 g(rd());
+                std::shuffle(rand_numbers.begin(), rand_numbers.end(), g);
+            }
+            rand_numbers.resize(train_subset);
 
-            for (int i = 0; i < num_data; ++i) {
+            for (int i = 0; i < train_subset; ++i) {
                 std::cout << rand_numbers[i] << ", ";
                 if ((i + 1) % 20 == 0) {
                     std::cout << std::endl;
@@ -239,7 +355,7 @@ int main() {
 
             HELLM::CtxtTensor forward{ctxt_cur[0]};
             // pooling forward
-            if (std::strcmp(task, "S") == 0) {
+            if (task == "S") {
 
                 block.forward3_pooling_bert_stsb(
                     ctxt_cur, forward,
@@ -259,8 +375,7 @@ int main() {
                 if (rank == 0) {
                     std::cout << "pooling backward Done" << std::endl;
                 }
-            } else if (std::strcmp(task, "T") == 0 ||
-                       std::strcmp(task, "Q") == 0) {
+            } else if (task == "T" || task == "Q") {
                 block.forward3_pooling_bert_sst2(
                     ctxt_cur, forward,
                     labels[rand_numbers[rank + num_gpu * step]]);
@@ -335,39 +450,39 @@ int main() {
                     {
                         std::shared_ptr<HELLM::LoRA::LoraModule> lora_module_ =
                             std::make_shared<HELLM::LoRA::LoraModule>(hemmer, 0);
-                        lora_module_->optimizerStep_bert(task, num_step);
+                        lora_module_->optimizerStep_bert(task.c_str(), num_step);
                     }
                     {
                         std::shared_ptr<HELLM::LoRA::LoraModule> lora_module_ =
                             std::make_shared<HELLM::LoRA::LoraModule>(hemmer, 1);
-                        lora_module_->optimizerStep_bert(task, num_step);
+                        lora_module_->optimizerStep_bert(task.c_str(), num_step);
                     }
                     {
                         std::shared_ptr<HELLM::LoRA::LoraModule> lora_module_ =
                             std::make_shared<HELLM::LoRA::LoraModule>(hemmer, 0);
-                        lora_module_->optimizerStep_head_bert(task, num_step);
+                        lora_module_->optimizerStep_head_bert(task.c_str(), num_step);
                     }
                     {
                         std::shared_ptr<HELLM::LoRA::LoraModule> lora_module_ =
                             std::make_shared<HELLM::LoRA::LoraModule>(hemmer, 0);
-                        lora_module_->optimizerStep_head2_bert(task, num_step);
+                        lora_module_->optimizerStep_head2_bert(task.c_str(), num_step);
                     }
                 } else if (rank < 3) {
                     std::shared_ptr<HELLM::LoRA::LoraModule> lora_module_ =
                         std::make_shared<HELLM::LoRA::LoraModule>(hemmer, 0);
-                    lora_module_->optimizerStep_bert(task, num_step);
+                    lora_module_->optimizerStep_bert(task.c_str(), num_step);
                 } else if (rank >= 3 && rank < 6) {
                     std::shared_ptr<HELLM::LoRA::LoraModule> lora_module_ =
                         std::make_shared<HELLM::LoRA::LoraModule>(hemmer, 1);
-                    lora_module_->optimizerStep_bert(task, num_step);
+                    lora_module_->optimizerStep_bert(task.c_str(), num_step);
                 } else if (rank == 6) {
                     std::shared_ptr<HELLM::LoRA::LoraModule> lora_module_ =
                         std::make_shared<HELLM::LoRA::LoraModule>(hemmer, 0);
-                    lora_module_->optimizerStep_head_bert(task, num_step);
+                    lora_module_->optimizerStep_head_bert(task.c_str(), num_step);
                 } else {
                     std::shared_ptr<HELLM::LoRA::LoraModule> lora_module_ =
                         std::make_shared<HELLM::LoRA::LoraModule>(hemmer, 0);
-                    lora_module_->optimizerStep_head2_bert(task, num_step);
+                    lora_module_->optimizerStep_head2_bert(task.c_str(), num_step);
                 }
 
                 HEaaN::CudaTools::cudaDeviceSynchronize();

@@ -384,3 +384,93 @@ for (int j = 0; j < 277; ++j)
 - Important note:
   - Source/build changes do not alter an already-running `./build/bin/train` process.
   - Any run started before this fix may still use the old compiled path behavior.
+
+
+## Follow-up Tooling Fix - 2026-07-01
+
+### Task-Selectable Train/Eval and Metric Sanity Checks
+
+- Motivation:
+  - Previous MRPC and RTE scores were much lower than the paper reference values.
+  - Review showed multiple hardcoded task paths and evaluation settings, making it easy to mix RTE/MRPC data, LoRA weights, eval containers, and metric labels.
+  - RTE also showed a possible label/logit-order issue: the old RTE eval log gives `0.4368` accuracy normally, but `0.5632` if binary predictions are inverted.
+
+- Training hardcoding removed from `ciphertext/examples/backward-bert-multi.cpp`:
+  - Added task selection through `HELLM_TASK`.
+  - Supported task names/codes:
+    - `RTE` or `R`
+    - `MRPC` or `M`
+    - `COLA` or `C`
+    - `SST2` or `T`
+    - `QNLI` or `Q`
+  - Task selection now controls:
+    - `weight_path`
+    - train converted-weight container filename
+    - task code passed into LoRA optimizer/loss logic
+    - train data count
+    - default 1-GPU steps per epoch
+    - label vector
+  - Added runtime overrides:
+    - `HELLM_WEIGHT_PATH`
+    - `HELLM_NUM_GPU`
+    - `HELLM_BATCH_SIZE`
+    - `HELLM_EPOCHS`
+    - `HELLM_STEPS_PER_EPOCH`
+    - `HELLM_TRAIN_SUBSET`
+    - `HELLM_SEED`
+  - Default behavior remains RTE with 5 epochs, so existing RTE behavior is preserved for new runs unless env vars override it.
+  - STS-B is not included in this generic path yet because its labels are `double`, while the current shared classification path uses `u64` labels.
+
+- Eval hardcoding removed from `ciphertext/examples/bert-test.cpp`:
+  - Added `HELLM_TASK` task selection for eval path/container/loop count.
+  - Added runtime overrides:
+    - `HELLM_WEIGHT_PATH`
+    - `HELLM_LORA_PATH`
+    - `HELLM_EVAL_STEPS`
+  - Existing positional LoRA snapshot argument is still supported:
+    - `./build/bin/eval ./data_2ly_rte/0epo/`
+  - Equivalent env-based form:
+    - `HELLM_TASK=RTE HELLM_LORA_PATH=./data_2ly_rte/0epo/ ./build/bin/eval`
+  - MRPC eval can now be selected without editing source:
+    - `HELLM_TASK=MRPC HELLM_LORA_PATH=./data_2ly_mrpc/0epo/ ./build/bin/eval`
+
+- Metric hardcoding removed from `ciphertext/metric.py`:
+  - Added CLI args:
+    - `--task`
+    - `--pred-file`
+    - `--label-file`
+    - `--block-size`
+  - Default label files for MRPC and RTE are resolved relative to the repository root, not the current shell directory.
+  - The script now prints both:
+    - normal label/logit interpretation
+    - inverted binary interpretation
+  - This directly checks the RTE label/logit-order suspicion.
+
+- Metric sanity check on existing logs:
+  - RTE old eval log:
+    - Command: `python ciphertext/metric.py --task rte --pred-file ciphertext/eval_rte_np1_277.log`
+    - Normal accuracy: `0.4368231047`
+    - Inverted accuracy: `0.5631768953`
+  - MRPC old eval log:
+    - Command: `python ciphertext/metric.py --task mrpc --pred-file ciphertext/eval_mrpc_np1_408.log`
+    - Normal accuracy: `0.5147058824`
+    - Normal F1: `0.5909090909`
+    - Inverted accuracy: `0.4852941176`
+    - Inverted F1: `0.5643153527`
+
+- Build verification:
+  - Rebuilt successfully with:
+    - `cmake --build build -j --target eval train`
+  - The already-running `rte_epoch5_fixed` process is unaffected because it was already loaded into memory before this rebuild.
+
+- Example future commands:
+  - Full default RTE train:
+    - `HELLM_TASK=RTE ./build/bin/train`
+  - MRPC train without source edits:
+    - `HELLM_TASK=MRPC ./build/bin/train`
+  - Small deterministic RTE pilot:
+    - `HELLM_TASK=RTE HELLM_EPOCHS=5 HELLM_TRAIN_SUBSET=256 HELLM_STEPS_PER_EPOCH=256 HELLM_SEED=42 ./build/bin/train`
+  - RTE epoch snapshot eval:
+    - `HELLM_TASK=RTE ./build/bin/eval ./data_2ly_rte/0epo/`
+  - MRPC epoch snapshot eval:
+    - `HELLM_TASK=MRPC ./build/bin/eval ./data_2ly_mrpc/0epo/`

@@ -1,166 +1,117 @@
-""" This is a source file for computing downstream task scores."""
+"""Compute downstream task metrics from HE eval output."""
 
-import torch
-import sys
-import math
+import argparse
+from collections import Counter
+from pathlib import Path
+
 import numpy as np
-from safetensors import safe_open
+import torch
+from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, matthews_corrcoef
 
-from sklearn.metrics import confusion_matrix
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
+
+DEFAULT_LABELS = {
+    "mrpc": REPO_ROOT / "plaintext/fine-tuning_data/labels_mrpc_eval.pth",
+    "rte": REPO_ROOT / "plaintext/fine-tuning_data/labels_rte_eval.pth",
+}
 
 
-def sort_data_by_blocks(file_path, block_size=8):
-
-    current_block = []
-    blocks = []
-
-    with open(file_path, 'r') as file:
-        for line_number, line in enumerate(file, start=1):
-            # Skip lines before line 17
-            # Because the first 16 lines represent unrelated informations.
-            if line_number < 17:
+def numeric_rows(file_path):
+    rows = []
+    with open(file_path, "r", encoding="utf-8") as file:
+        for line in file:
+            cleaned = line.strip().rstrip(",")
+            if not cleaned:
                 continue
-
-            cleaned_line = line.strip().rstrip(',')
-            if not cleaned_line:
-                continue
-
             try:
-                line_data = list(map(float, cleaned_line.split(',')))
-                current_block.append(line_data)
+                values = [float(value.strip()) for value in cleaned.split(",")]
             except ValueError:
-                print(f"Skipping invalid line: {line}")
                 continue
-
-            if len(current_block) == block_size:
-                sorted_block = sorted(current_block, key=lambda x: x[0])
-                blocks.extend(sorted_block)
-                current_block = []
-
-        if current_block:
-            sorted_block = sorted(current_block, key=lambda x: x[0])
-            blocks.extend(sorted_block)
-
-    return blocks
+            if len(values) >= 3:
+                rows.append(values[:3])
+    return rows
 
 
-def evaluate_sorted_data(blocks):
-    he_list = []
+def sort_by_blocks(rows, block_size):
+    if block_size <= 1:
+        return rows
 
-    for line in blocks:
-        if len(line) < 3:
-            print(f"Skipping invalid line with insufficient values: {line}")
-            continue
-
-        value1 = line[1]
-        value2 = line[2]
-
-        if value1 > value2:
-            he_list.append(0)
-        else:
-            he_list.append(1)
-
-    return he_list
-
-# Modify file_path with the eval output data file.
-file_path = "mrpc_re_eval.txt"
-sorted_blocks = sort_data_by_blocks(file_path)
-he_list = evaluate_sorted_data(sorted_blocks)
+    sorted_rows = []
+    for idx in range(0, len(rows), block_size):
+        block = rows[idx : idx + block_size]
+        sorted_rows.extend(sorted(block, key=lambda row: row[0]))
+    return sorted_rows
 
 
-# Need to load an appropriate label .pth file
-# ```
-# For example, "./labels_mrpc_eval.pth" denotes label file containig mrpc_eval set.
-# ```
+def predictions_from_rows(rows, invert=False):
+    preds = [0 if row[1] > row[2] else 1 for row in rows]
+    if invert:
+        preds = [1 - pred for pred in preds]
+    return preds
 
 
+def load_labels(path, count):
+    labels = torch.load(path).numpy().tolist()
+    return labels[:count]
 
-label_true = torch.load("./labels_mrpc_eval.pth").numpy().tolist()
-label_he_pred = he_list
 
+def print_classification_metrics(task, labels, preds, title):
+    print(f"[{title}]")
+    print(f"num_eval_outputs = {len(preds)}")
+    print(f"true label counts = {dict(Counter(labels))}")
+    print(f"pred counts = {dict(Counter(preds))}")
+    print(f"accuracy = {accuracy_score(labels, preds):.10f}")
 
-#  Metrics for each benchmark downstream task
-#
-# * RTE: ACC
-# * MRPC: F1
-# * COLA: MCC
-# * STS-B: Pearson
-# * SST-2: ACC
-# * QNLI: ACC
-#
-
-# Calcuate F1 score
-def calculate_f1_score(y_true, y_pred):
-    TP = sum((y_true[i] == 1 and y_pred[i] == 1) for i in range(len(y_true)))
-    FP = sum((y_true[i] == 0 and y_pred[i] == 1) for i in range(len(y_true)))
-    FN = sum((y_true[i] == 1 and y_pred[i] == 0) for i in range(len(y_true)))
-
-    if TP + FP == 0:
-        precision = 0
+    if task == "mrpc":
+        print(f"f1 = {f1_score(labels, preds):.10f}")
+    elif task == "cola":
+        print(f"mcc = {matthews_corrcoef(labels, preds):.10f}")
     else:
-        precision = TP / (TP + FP)
+        if len(set(labels)) <= 2 and len(set(preds)) <= 2:
+            print(f"f1 = {f1_score(labels, preds):.10f}")
 
-    if TP + FN == 0:
-        recall = 0
-    else:
-        recall = TP / (TP + FN)
-
-    if precision + recall == 0:
-        f1_score = 0
-    else:
-        f1_score = 2 * (precision * recall) / (precision + recall)
-
-    return f1_score
-
-# Calculate MCC
-def calculate_mcc(y_true, y_pred):
-
-    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
-
-    numerator = (tp * tn) - (fp * fn)
-    denominator = np.sqrt((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn))
-
-    if denominator == 0:
-        return 0
-
-    return numerator / denominator
-
-# Calculate ACC
-def calculate_acc(y_true, y_pred) :
-    same_value_count = 0
-    list_length = len(y_true)
-
-    for i in range(list_length):
-        if y_true[i] == y_pred[i]:
-            same_value_count += 1
-
-    same_value_ratio = same_value_count / list_length
-
-    return same_value_ratio
-
-# Calculate Pearson corr.
-def pearson_correlation(x, y):
-
-    mean_x = np.mean(x)
-    mean_y = np.mean(y)
-
-    numerator = np.sum((x - mean_x) * (y - mean_y))
-
-    denominator = np.sqrt(np.sum((x - mean_x)**2) * np.sum((y - mean_y)**2))
-
-    r = numerator / denominator
-
-    return r
+    print(f"confusion_matrix = {confusion_matrix(labels, preds).tolist()}")
 
 
-mcc = calculate_mcc(label_true, label_he_pred)
-print(f"Matthews Correlation Coefficient: {mcc: .4f}")
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--task", default="mrpc", help="Task name: mrpc, rte, cola, sst2, qnli")
+    parser.add_argument("--pred-file", required=True, help="HE eval output log/txt file")
+    parser.add_argument("--label-file", help="Evaluation label .pth file")
+    parser.add_argument(
+        "--block-size",
+        type=int,
+        default=1,
+        help="Rows per eval output block. Use 1 for one GPU, 8 for 8 GPUs.",
+    )
+    return parser.parse_args()
 
-f1 = calculate_f1_score(label_true, label_he_pred)
-print(f"F1 score: {f1: .4f}")
 
-acc = calculate_acc(label_true, label_he_pred)
-print(f"Acc: {acc:.4f}")
+def main():
+    args = parse_args()
+    task = args.task.lower()
+    pred_file = Path(args.pred_file)
+    label_file = args.label_file or DEFAULT_LABELS.get(task)
+    if label_file is None:
+        raise ValueError("--label-file is required for this task")
 
-pearson = pearson_correlation(label_true, label_he_pred)
-print(f"pearson: {pearson:.4f}")
+    rows = sort_by_blocks(numeric_rows(pred_file), args.block_size)
+    normal_preds = predictions_from_rows(rows, invert=False)
+    labels = load_labels(label_file, len(normal_preds))
+
+    print(f"task = {task}")
+    print(f"pred_file = {pred_file}")
+    print(f"label_file = {label_file}")
+    print(f"block_size = {args.block_size}")
+    print()
+
+    print_classification_metrics(task, labels, normal_preds, "normal")
+    print()
+    inverted_preds = predictions_from_rows(rows, invert=True)
+    print_classification_metrics(task, labels, inverted_preds, "inverted_labels")
+
+
+if __name__ == "__main__":
+    main()
