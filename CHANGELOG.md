@@ -1,476 +1,224 @@
 # Changelog
 
-All notable changes to the Encryption-friendly LLM Architecture project are documented here.
+This file summarizes local changes and experiment history after cloning the repository. It is organized by date and focuses on what changed, what was tried, what went wrong, and what the current state is.
 
-This file is intended to record both upstream history and the local reproduction changes made after cloning the repository.
+## Baseline at Clone
 
-## [Unreleased] - 2026-06-29
+### 2026-05-29
 
-### Local Repository Timeline
+- Cloned `Encryption-friendly_LLM_Architecture` locally.
+- Local clone started from upstream history that already included:
+  - plaintext and ciphertext implementations,
+  - HEaaN external headers/libs,
+  - C++ train/eval/conversion examples,
+  - plaintext cramming fine-tuning/eval code,
+  - MRPC-oriented HE example configuration.
+- The original HE training examples were largely hardcoded by task/path and were written around the original multi-GPU workflow.
 
-- **2026-05-29**: Repository cloned from `https://github.com/Donghwan-Rho/Encryption-friendly_LLM_Architecture`.
-  - Clone landed at commit `4a2df0f` on `master`.
-  - At clone time, the upstream repository already contained plaintext and ciphertext implementations, HEaaN external headers/libs, C++ examples, conversion scripts, and plaintext cramming code.
-- **2026-06-29 `564fb0c` - `chore: add .gitignore`**
-  - Added top-level `.gitignore`.
-  - Removed tracked generated Python cache files from the repository history at this point.
-  - Exclusion scope includes Python caches, local virtual environments, generated outputs, model/checkpoint artifacts, converted HE weights, build directories, logs, and temporary files.
-- **2026-06-29 `8c917aa` - `docs: add comprehensive CHANGELOG`**
-  - Added this `CHANGELOG.md` file.
-- **2026-06-29 `179994d` - `refactor: update dependencies and build configurations`**
-  - Main functional/code update for the local reproduction.
-  - Added RTE conversion scripts, updated build/environment files, changed MRPC-oriented HE examples toward RTE, and changed training from the original 8-GPU setup to a local 1-GPU setup.
-- **2026-06-29 `0895609` - `docs: update CHANGELOG with GPU configuration change`**
-  - Documented the 1-GPU configuration change.
-- **2026-06-29 `97e3fee` - `docs: comprehensive CHANGELOG update with detailed code changes`**
-  - Expanded the changelog with more detailed file-level notes.
-- **2026-06-29 current update**
-  - Rewrote this changelog to explicitly include step, epoch, data-count, batch-size, and clone-to-current history details.
+## Local Reproduction and Experiment History
 
-### Added
+### 2026-06-01 to 2026-06-04 - MRPC 1-GPU Attempt
 
-- **`.gitignore`**
-  - Added repository-level ignore rules for generated files and large local artifacts.
-  - Important ignored categories:
-    - `__pycache__/`, `*.pyc`, Python build metadata.
-    - Local environments such as `b200env/` and `hellm-bert-env/`.
-    - HE build directories such as `ciphertext/build/`.
-    - Converted weights and generated data outputs.
-    - Logs and temporary files.
+- Ran a local MRPC HE experiment in a modified 1-GPU setup.
+- Recorded MRPC eval summary in `ciphertext/result_summary.txt`:
+  - `num_eval_outputs = 408`
+  - `accuracy = 0.5147058824`
+  - `f1 = 0.5909090909`
+- Later review found this result is not a clean 1-epoch MRPC comparison:
+  - `ciphertext/train_mrpc_np1.log` stops around `step: 344`.
+  - MRPC 1-GPU full epoch should be about `3664` steps.
+  - No complete `0epo` MRPC snapshot was found under `ciphertext/data_2ly_mrpc/0epo/`.
+- Conclusion:
+  - The MRPC score was likely measured from a partially trained top-level LoRA state, not from a completed epoch snapshot.
+  - The score should not be compared directly to the paper's 5-epoch MRPC result.
 
-- **`CHANGELOG.md`**
-  - Added a structured record of repository changes and local reproduction decisions.
-  - Later expanded to include exact step/epoch/GPU changes.
+### 2026-06-08 to 2026-06-13 - RTE Conversion and 1-Epoch Attempt
 
-- **`ciphertext/convert_rte_eval.py`**
-  - New RTE evaluation conversion script.
-  - Uses `DIM = 768`, `HIDDEN_DIM = 3072`, `MAX_SEQ_LEN = 128`, `NUM_HEADS = 12`, `BATCH_SIZE = 16`.
-  - Uses `SUBMATRIX_DIM = 128` with an explicit caution that this is not 64.
-  - Converts model weights into HE-compatible block layouts.
-  - Adds RTE eval inputs/masks to a TorchScript-style container.
-  - Intended output is the RTE eval converted-weight container used by `bert-test.cpp`.
-
-- **`ciphertext/convert_rte_train.py`**
-  - New RTE training conversion script.
-  - Mirrors the eval conversion structure for train data.
-  - Converts RTE train inputs/masks and model weights for HE fine-tuning.
-
-- **`ciphertext/patch_convert.py`**
-  - Added a small one-off patch helper for `ciphertext/convert.py`.
-  - Replaces old combined `query_key_value.weight` access with separate `query.weight`, `key.weight`, and `value.weight` loading followed by `torch.cat(...)`.
-
-- **`ciphertext/result_summary.txt`**
-  - Added local result note for MRPC HE eval on the 1-GPU modified run.
-  - Recorded values:
-    - `num_eval_outputs = 408`
-    - `accuracy = 0.5147058823529411`
-    - `f1 = 0.5909090909090907`
-    - true label counts `{0: 129, 1: 279}`
-    - prediction counts `{0: 203, 1: 205}`
-
-### Changed
-
-#### `plaintext/requirements.txt`
-
-- Removed machine-specific conda build paths from dependency entries.
-- Changed packages from `package @ file:///...` style to standard package names.
-- Affected packages:
-  - `antlr4-python3-runtime`
-  - `hydra-core`
-  - `omegaconf`
-  - `packaging`
-  - `PyYAML`
-  - `typing_extensions`
-- Purpose: make plaintext environment installation less tied to the original machine.
-
-#### `ciphertext/CMakeLists.txt`
-
-- Added explicit CUDA Toolkit discovery near the top:
-  - `find_package(CUDAToolkit REQUIRED)`
-- Changed CUDA architecture targeting.
-  - Before: broad/legacy setting including `all` and older real architectures such as 60, 61, 70, 72, 75.
-  - After: `80 86 89 90`.
-- Purpose: target newer NVIDIA GPU architectures more directly for the local CUDA setup.
-- Note: the file still contains another `find_package(CUDAToolkit REQUIRED)` later in the file, so CUDA discovery is duplicated.
-
-#### `ciphertext/conda/hellm-bert-env.yml`
-
-- Changed CUDA channel:
-  - Before: `nvidia/label/cuda-12.1.0`
-  - After: `nvidia`
-- Added explicit Python version:
-  - `python=3.10`
-- Purpose: make the conda environment more explicit and easier to solve on the local setup.
-
-#### `ciphertext/convert.py`
-
-- Replaced placeholder paths with local absolute paths:
-  - `weight_path = "/home/jovyan/Encryption-friendly_LLM_Architecture/plaintext/pre-trained_weights/test/model.safetensors"`
-  - `save_path = "/home/jovyan/Encryption-friendly_LLM_Architecture/ciphertext/converted_weights/converted_model.pt"`
-- Updated MRPC train data loading paths from relative placeholder-style paths to absolute local paths:
-  - `plaintext/fine-tuning_data/mrpc_train_inputs`
-  - `plaintext/fine-tuning_data/mrpc_train_masks`
-- Updated commented MRPC eval path examples to absolute local paths.
-- Changed attention weight loading:
-  - Before: read a single combined `attn.self_attention.query_key_value.weight`.
-  - After: read separate `query.weight`, `key.weight`, and `value.weight`, then concatenate:
-    - `qkv_w = torch.cat([q_w, k_w, v_w], dim=0)`
-- Purpose: support checkpoints whose Q/K/V projections are stored as separate tensors.
-- Known limitation: the absolute paths are machine-specific and should eventually be replaced with CLI args or environment variables.
-
-#### `ciphertext/examples/backward-bert-multi.cpp`
-
-This file contains the most important step/epoch/runtime behavior changes.
-
-- Changed dataset/weight directory:
-  - Before: `./data_2ly_mrpc/`
-  - After: `./data_2ly_rte/`
-
-- Changed task:
-  - Before: `auto task = "M";` for MRPC.
-  - After: `auto task = "R";` for RTE.
-
-- Changed GPU configuration:
-  - Before: `const int num_gpu = 8;`
-  - After: `const int num_gpu = 1;`
-
-- Changed effective batch size through the existing formula:
-  - Formula remains `static_cast<int>(16.0 / num_gpu)`.
-  - Before with 8 GPUs: `batch_size = 2`.
-  - After with 1 GPU: `batch_size = 16`.
-
-- Changed training data count:
-  - Before: `const int num_data = 3668;` for MRPC.
-  - After: `const int num_data = 2490;` for RTE.
-
-- Changed one-epoch step count:
-  - Before: `const HELLM::u64 one_epo_step = 458;` for MRPC on the original 8-GPU setup.
-  - After: `const HELLM::u64 one_epo_step = 2480; // temp`.
-  - Important: this differs from the comment/README value `RTE: 310`.
-  - Reasoning from the current code:
-    - With `num_gpu = 1`, each loop step consumes one sample index via `rank + num_gpu * step`.
-    - RTE train data count is `2490`.
-    - `2480` is divisible by `batch_size = 16`, producing `155` optimizer updates per epoch.
-    - This leaves 10 RTE train samples unused in the current loop.
-  - Documentation impact: any README or run note that still says RTE uses `310` steps is outdated for this 1-GPU local training mode.
-
-- Changed epoch count:
-  - Before: `for (HEaaN::u64 epo = 0; epo < 5; epo++)`.
-  - After: `for (HEaaN::u64 epo = 0; epo < 1; epo++)`.
-  - Current local run is configured for 1 epoch, not 5.
-
-- Changed converted-weight file:
-  - Before: `converted_weights_mrpc.pth`.
-  - After: `converted_weights_rte.pth`.
-
-- Changed labels:
-  - Before: active labels were `HELLM::ModelArgs::MRPC_LABELS`.
-  - After: active labels are `HELLM::ModelArgs::RTE_LABELS`.
-
-- Added single-GPU optimizer handling:
-  - If `num_gpu == 1`, rank 0 now sequentially runs:
-    - `optimizerStep_bert(task, num_step)` for layer 0.
-    - `optimizerStep_bert(task, num_step)` for layer 1.
-    - `optimizerStep_head_bert(task, num_step)`.
-    - `optimizerStep_head2_bert(task, num_step)`.
-  - If `num_gpu != 1`, the previous rank-split optimizer behavior remains:
-    - ranks `< 3` handle one layer path.
-    - ranks `3..5` handle the other layer path.
-    - rank `6` handles `head`.
-    - remaining rank handles `head2`.
-
-- Optimizer-step numbering remains:
-  - `num_step = one_epo_step * epo / batch_size + step / batch_size`.
-  - With current values (`one_epo_step=2480`, `batch_size=16`, `epo=0`), this gives optimizer step numbers `0..154`.
-
-#### `ciphertext/examples/bert-test.cpp`
-
-- Changed eval data path:
-  - Before: `./data_2ly_mrpc/`
-  - After: `./data_2ly_rte/`
-- Changed converted eval-weight file:
-  - Before: `converted_weights_mrpc_eval.pth`.
-  - After: `converted_weights_rte_eval.pth`.
-- Changed evaluation loop count:
-  - Before: `for (int j = 0; j < 51; ++j)`.
-  - After: `for (int j = 0; j < 277; ++j)`.
-- Meaning:
-  - The example moved from a 51-step MRPC smoke/eval configuration to a 277-step RTE eval configuration.
-  - The code still uses `rank + size * j` indexing, so total consumed records depend on MPI size/rank behavior.
-
-#### `ciphertext/examples/convert2.cpp`
-
-- Changed converted input container:
-  - Before: `./data_2ly_mrpc/converted_weights_mrpc.pth`.
-  - After: `./data_2ly_rte/converted_weights_rte.pth`.
-- Changed plaintext output directory:
-  - Before: `./data_2ly_mrpc/`.
-  - After: `./data_2ly_rte/`.
-- Purpose: generate HE plaintext/materialized weight files for the RTE path.
-
-### Baseline Upstream History Before Local Changes
-
-- **2025-02-10 `5c89ce2` - first commit**
-  - Added the initial full repository.
-  - Included root README, `plaintext/`, `ciphertext/`, HEaaN headers/libs, CMake files, C++ examples, conversion code, tests, and cramming plaintext training/eval code.
-- **2025-02-17 `44dc1af`**
-  - Updated plaintext architecture/configuration and fine-tuning data saving logic.
-- **2025-02-18 commits**
-  - `6ce43ae`: README update in `ciphertext/`.
-  - `7d5975c`, `e12609b`, `d59fd12`: iterative `ciphertext/convert.py` updates.
-  - `709f527`: small `backward-bert-multi.cpp` update.
-- **2025-02-21 commits**
-  - Several root README updates and a merge from upstream master.
-- **2025-03-11 `f5cba6f`**
-  - Added root `requirements.txt`.
-- **2025-03-13 `73b5444`**
-  - Commented out an unused part of `ciphertext/examples/convert2.cpp`.
-- **2025-03-14 `506b1fa`**
-  - Moved/refined requirements under `plaintext/requirements.txt`.
-  - Added Python 3.11 generated cache files, later removed by local `.gitignore` cleanup.
-- **2025-03-17 commits**
-  - Two small `ciphertext/README.md` updates.
-- **Clone baseline**
-  - Local clone on 2026-05-29 started from `4a2df0f`, before the local 2026-06-29 cleanup/RTE/1GPU changes.
-
-### Current Runtime Configuration Summary
-
-Current `ciphertext/examples/backward-bert-multi.cpp` local training configuration:
-
-```cpp
-const std::string weight_pth = "./data_2ly_rte/";
-const int num_gpu = 1;
-const int batch_size = static_cast<int>(16.0 / num_gpu); // 16
-auto task = "R";
-const HELLM::u64 one_epo_step = 2480; // temp
-const int num_data = 2490; // temp
-for (HEaaN::u64 epo = 0; epo < 1; epo++)
-```
-
-Current `ciphertext/examples/bert-test.cpp` local eval configuration:
-
-```cpp
-static const std::string data_path = "./data_2ly_rte/";
-torch::jit::load(data_path + std::string("converted_weights_rte_eval.pth"));
-for (int j = 0; j < 277; ++j)
-```
-
-### Known Documentation Gaps
-
-- `ciphertext/README.md` still documents the original/general 8-GPU-oriented setup:
-  - `num_gpu = 8`
-  - `batch_size = 2`
-  - `one_epo_step = 310 # RTE`
-- That README does not yet describe the current local 1-GPU RTE training mode:
+- Added/generated RTE train/eval converted data and related conversion scripts:
+  - `ciphertext/convert_rte_train.py`
+  - `ciphertext/convert_rte_eval.py`
+  - RTE converted containers under `ciphertext/data_2ly_rte/` via symlinked converted-weight files.
+- Switched local HE train/eval examples from MRPC toward RTE.
+- Local RTE 1-GPU training settings used during this period:
+  - task: RTE
+  - data path: `./data_2ly_rte/`
   - `num_gpu = 1`
   - `batch_size = 16`
-  - `one_epo_step = 2480`
-  - `epo < 1`
-- `convert.py` currently contains absolute `/home/jovyan/...` paths.
-- `CMakeLists.txt` has duplicated `find_package(CUDAToolkit REQUIRED)`.
-
-### Verification Notes
-
-- Git worktree was clean before this changelog rewrite.
-- Current branch: `master`, tracking `origin/master`.
-- Detailed history source:
-  - `git log --reverse --date=short --pretty=format:'%h %ad %an %s' --stat`
-  - `git reflog --date=iso`
-  - direct inspection of current `backward-bert-multi.cpp`, `bert-test.cpp`, `convert2.cpp`, `convert.py`, and conversion scripts.
-
----
-
-**Last Updated**: 2026-06-29
-**Status**: Local clone history and current 1-GPU RTE step/epoch configuration documented.
-
-## Follow-up Experiment - 2026-06-29
-
-### RTE 1-GPU Training Retry With 5 Epochs
-
-- Motivation:
-  - Previous local RTE/1-GPU experiment used `epo < 1` and produced lower-than-expected accuracy.
-  - This retry tests whether the reduced epoch count contributed to the accuracy drop.
-
-- Code change:
-  - File: `ciphertext/examples/backward-bert-multi.cpp`
-  - Changed training epoch loop from:
-    - `for (HEaaN::u64 epo = 0; epo < 1; epo++)`
-  - To:
-    - `for (HEaaN::u64 epo = 0; epo < 5; epo++)`
-
-- Configuration kept unchanged from the local RTE/1-GPU setup:
-  - `weight_pth = "./data_2ly_rte/"`
-  - `num_gpu = 1`
-  - `batch_size = 16`
-  - `task = "R"`
   - `one_epo_step = 2480`
   - `num_data = 2490`
+  - initially tested around 1 epoch.
+- Previous RTE eval log later recomputed from `ciphertext/eval_rte_np1_277.log`:
+  - normal accuracy: `0.4368231047`
+  - inverted binary-label accuracy: `0.5631768953`
+- Findings from later review:
+  - RTE 1 epoch did complete in one earlier log, but the result may have been affected by path/config issues.
+  - The inverted-label result being much higher suggests a possible label/logit-order issue that must be checked when evaluating snapshots.
 
-- Expected training schedule:
-  - `2480` HE training steps per epoch.
-  - `5` epochs total.
-  - `12400` HE training loop steps total.
-  - Optimizer updates occur every `16` steps.
-  - Expected optimizer update count: `155` per epoch, `775` total.
+### 2026-06-29 - Repository Cleanup and Documentation
 
-- Runtime note:
-  - Previous log showed individual HE steps can take tens of seconds, so this run may take a long time.
-  - Experiment result and final accuracy should be appended here after the run completes.
+- Added repository-level `.gitignore` for generated/local artifacts:
+  - Python caches,
+  - local environments,
+  - build directories,
+  - converted weights,
+  - generated logs/output files.
+- Added and expanded `CHANGELOG.md` to document local reproduction work.
+- Updated environment/build configuration for the local setup:
+  - adjusted CUDA/CMake configuration,
+  - updated conda environment metadata,
+  - cleaned local dependency references.
+- Updated conversion code to support checkpoints with separate Q/K/V projection tensors instead of a single combined `query_key_value` tensor.
+- Known remaining cleanup item:
+  - `ciphertext/convert.py` still contains local absolute paths and should eventually be made argument/env driven.
 
-## Follow-up Fix - 2026-06-29
-
-### RTE LoRA Path Fix and Snapshot Eval Support
-
-- Problem found after starting the first `rte_epoch5` retry:
-  - The training example used RTE base data via `weight_pth = "./data_2ly_rte/"`.
-  - LoRA encrypted weights were still saved/loaded through `HEMMer::getWeightPath()`.
-  - `HEMMer` defaulted that path to `"./data_2ly_mrpc/"`, so the already-running process was writing current LoRA state to the MRPC directory even though the task/data were RTE.
-
-- Interrupted run:
-  - Stopped tmux session `rte_epoch5` before it reached epoch 0 completion.
-  - The run was around step `95 / 2480` of epoch 0, so restarting was preferable to waiting several days with mixed RTE/MRPC paths.
-  - Preserved the old log at `ciphertext/train_rte_epoch5_tmux.log`.
-
-- Code changes:
-  - File: `ciphertext/include/HELLM/HEMMer.hpp`
-    - Added `setWeightPath(...)` and `setWeightTestPath(...)`.
-    - Changed `weight_path_` and `weight_test_path_` from fixed `const std::string` defaults to configurable strings.
-  - File: `ciphertext/examples/backward-bert-multi.cpp`
-    - After constructing `HEMMer`, explicitly set both LoRA paths to `weight_pth`:
-      - `hemmer->setWeightPath(weight_pth);`
-      - `hemmer->setWeightTestPath(weight_pth);`
-    - This makes new RTE training write LoRA files under `./data_2ly_rte/`, including epoch snapshots such as `./data_2ly_rte/0epo/`.
-  - File: `ciphertext/examples/bert-test.cpp`
-    - Added an optional command-line LoRA snapshot path.
-    - Default eval still uses `./data_2ly_rte/`.
-    - Passing `./data_2ly_rte/0epo/` makes eval load the epoch-0 snapshot LoRA weights while keeping the RTE eval container/base weights from `./data_2ly_rte/`.
-    - Eval now prints the base data path and LoRA snapshot path at startup.
-
-- Build verification:
-  - Rebuilt successfully with:
-    - `cmake --build build -j --target eval train`
-  - Rebuilt binaries:
-    - `ciphertext/build/bin/train`
-    - `ciphertext/build/bin/eval`
-
-- Fixed experiment restart:
-  - Started a new tmux session:
-    - `rte_epoch5_fixed`
-  - Fixed run log:
-    - `ciphertext/train_rte_epoch5_fixed_tmux.log`
-  - Runner:
-    - `/tmp/run_rte_epoch5.sh`
-  - The fixed run uses the rebuilt `./build/bin/train`, so new LoRA writes should go to `./data_2ly_rte/`.
-
-- How to monitor:
-  - Attach:
-    - `/home/jovyan/Encryption-friendly_LLM_Architecture/ciphertext/hellm-bert-env/bin/tmux attach -t rte_epoch5_fixed`
-  - Detach:
-    - `Ctrl+b`, then `d`
-  - Tail log:
-    - `tail -f ciphertext/train_rte_epoch5_fixed_tmux.log`
-
-- How to run intermediate eval after an epoch snapshot exists:
-  - Epoch 0 snapshot:
-    - `cd /home/jovyan/Encryption-friendly_LLM_Architecture/ciphertext`
-    - `export HELLM_KEY_PATH=./key`
-    - `/home/jovyan/Encryption-friendly_LLM_Architecture/ciphertext/hellm-bert-env/bin/mpirun -np 1 ./build/bin/eval ./data_2ly_rte/0epo/`
-  - Later epochs follow the same pattern:
-    - `./data_2ly_rte/1epo/`
-    - `./data_2ly_rte/2epo/`
-    - `./data_2ly_rte/3epo/`
-    - `./data_2ly_rte/4epo/`
-
-- Important note:
-  - Source/build changes do not alter an already-running `./build/bin/train` process.
-  - Any run started before this fix may still use the old compiled path behavior.
-
-
-## Follow-up Tooling Fix - 2026-07-01
-
-### Task-Selectable Train/Eval and Metric Sanity Checks
+### 2026-06-29 - RTE 5-Epoch Retry
 
 - Motivation:
-  - Previous MRPC and RTE scores were much lower than the paper reference values.
-  - Review showed multiple hardcoded task paths and evaluation settings, making it easy to mix RTE/MRPC data, LoRA weights, eval containers, and metric labels.
-  - RTE also showed a possible label/logit-order issue: the old RTE eval log gives `0.4368` accuracy normally, but `0.5632` if binary predictions are inverted.
+  - MRPC and RTE earlier scores were lower than expected.
+  - One hypothesis was that 1 epoch was not enough because the paper results are based on longer fine-tuning.
+- Changed RTE training from 1 epoch to 5 epochs:
+  - total planned steps: `2480 * 5 = 12400`
+  - optimizer updates: `155` per epoch, `775` total.
+- Started RTE 5-epoch run in tmux.
+- Runtime observation:
+  - Per-step log time is around `43-46s`, but real wall-clock progress is much slower overall.
+  - One RTE epoch appears to take several days in practice on the current setup.
 
-- Training hardcoding removed from `ciphertext/examples/backward-bert-multi.cpp`:
-  - Added task selection through `HELLM_TASK`.
-  - Supported task names/codes:
-    - `RTE` or `R`
-    - `MRPC` or `M`
-    - `COLA` or `C`
-    - `SST2` or `T`
-    - `QNLI` or `Q`
-  - Task selection now controls:
-    - `weight_path`
-    - train converted-weight container filename
-    - task code passed into LoRA optimizer/loss logic
-    - train data count
-    - default 1-GPU steps per epoch
-    - label vector
-  - Added runtime overrides:
-    - `HELLM_WEIGHT_PATH`
-    - `HELLM_NUM_GPU`
-    - `HELLM_BATCH_SIZE`
-    - `HELLM_EPOCHS`
-    - `HELLM_STEPS_PER_EPOCH`
-    - `HELLM_TRAIN_SUBSET`
-    - `HELLM_SEED`
-  - Default behavior remains RTE with 5 epochs, so existing RTE behavior is preserved for new runs unless env vars override it.
-  - STS-B is not included in this generic path yet because its labels are `double`, while the current shared classification path uses `u64` labels.
+### 2026-06-29 - LoRA Path Bug Found and Fixed
 
-- Eval hardcoding removed from `ciphertext/examples/bert-test.cpp`:
-  - Added `HELLM_TASK` task selection for eval path/container/loop count.
-  - Added runtime overrides:
-    - `HELLM_WEIGHT_PATH`
-    - `HELLM_LORA_PATH`
-    - `HELLM_EVAL_STEPS`
-  - Existing positional LoRA snapshot argument is still supported:
+- Found a serious path-mixing issue:
+  - training/eval examples passed RTE base paths to `TransformerBlock`,
+  - but LoRA encrypted weights were loaded/saved through `HEMMer::getWeightPath()`,
+  - `HEMMer` defaulted that path to `./data_2ly_mrpc/`.
+- Impact:
+  - RTE runs could write/read LoRA weights in the MRPC directory.
+  - This could explain low or inconsistent RTE/MRPC results.
+- Fixes:
+  - Added configurable LoRA path setters in `ciphertext/include/HELLM/HEMMer.hpp`:
+    - `setWeightPath(...)`
+    - `setWeightTestPath(...)`
+  - Updated training to explicitly set LoRA paths to the active task weight path.
+  - Updated eval so a snapshot path can be passed directly, e.g.:
     - `./build/bin/eval ./data_2ly_rte/0epo/`
-  - Equivalent env-based form:
-    - `HELLM_TASK=RTE HELLM_LORA_PATH=./data_2ly_rte/0epo/ ./build/bin/eval`
-  - MRPC eval can now be selected without editing source:
-    - `HELLM_TASK=MRPC HELLM_LORA_PATH=./data_2ly_mrpc/0epo/ ./build/bin/eval`
+- Stopped the first bad `rte_epoch5` run around `step 95 / 2480`.
+- Restarted fixed RTE run in tmux as:
+  - session: `rte_epoch5_fixed`
+  - log: `ciphertext/train_rte_epoch5_fixed_tmux.log`
+- Verified the fixed run writes current LoRA files under `ciphertext/data_2ly_rte/`.
 
-- Metric hardcoding removed from `ciphertext/metric.py`:
-  - Added CLI args:
-    - `--task`
-    - `--pred-file`
-    - `--label-file`
-    - `--block-size`
-  - Default label files for MRPC and RTE are resolved relative to the repository root, not the current shell directory.
-  - The script now prints both:
-    - normal label/logit interpretation
-    - inverted binary interpretation
-  - This directly checks the RTE label/logit-order suspicion.
+### 2026-07-01 - Accuracy Review and Metric Sanity Checks
 
-- Metric sanity check on existing logs:
-  - RTE old eval log:
-    - Command: `python ciphertext/metric.py --task rte --pred-file ciphertext/eval_rte_np1_277.log`
-    - Normal accuracy: `0.4368231047`
-    - Inverted accuracy: `0.5631768953`
-  - MRPC old eval log:
-    - Command: `python ciphertext/metric.py --task mrpc --pred-file ciphertext/eval_mrpc_np1_408.log`
-    - Normal accuracy: `0.5147058824`
-    - Normal F1: `0.5909090909`
-    - Inverted accuracy: `0.4852941176`
-    - Inverted F1: `0.5643153527`
+- Reviewed why MRPC and RTE scores were lower than paper reference values.
+- MRPC review:
+  - Existing MRPC log was incomplete: stopped around `step 344 / 3664`.
+  - No complete MRPC `0epo` snapshot was available.
+  - Existing MRPC top-level LoRA files were later overwritten by the earlier RTE/MRPC path bug, so they are no longer reliable as MRPC results.
+- RTE review:
+  - Previous RTE 1-epoch log appears to have reached `step 2480`.
+  - Existing RTE eval result was low in normal label interpretation but improved when predictions were inverted:
+    - normal accuracy: `0.4368231047`
+    - inverted accuracy: `0.5631768953`
+  - This suggests label/logit ordering must be checked for future evals.
+- Metric note:
+  - MRPC is usually reported with F1 because GLUE uses task-specific metrics.
+  - RTE is reported with accuracy.
 
-- Build verification:
-  - Rebuilt successfully with:
-    - `cmake --build build -j --target eval train`
-  - The already-running `rte_epoch5_fixed` process is unaffected because it was already loaded into memory before this rebuild.
+### 2026-07-01 - Hardcoding Removed from Train/Eval/Metric
 
-- Example future commands:
-  - Full default RTE train:
-    - `HELLM_TASK=RTE ./build/bin/train`
-  - MRPC train without source edits:
-    - `HELLM_TASK=MRPC ./build/bin/train`
-  - Small deterministic RTE pilot:
-    - `HELLM_TASK=RTE HELLM_EPOCHS=5 HELLM_TRAIN_SUBSET=256 HELLM_STEPS_PER_EPOCH=256 HELLM_SEED=42 ./build/bin/train`
-  - RTE epoch snapshot eval:
-    - `HELLM_TASK=RTE ./build/bin/eval ./data_2ly_rte/0epo/`
-  - MRPC epoch snapshot eval:
-    - `HELLM_TASK=MRPC ./build/bin/eval ./data_2ly_mrpc/0epo/`
+- Made HE training task-selectable through environment variables in `ciphertext/examples/backward-bert-multi.cpp`.
+- Supported task values:
+  - `RTE` / `R`
+  - `MRPC` / `M`
+  - `COLA` / `C`
+  - `SST2` / `T`
+  - `QNLI` / `Q`
+- Added runtime overrides:
+  - `HELLM_TASK`
+  - `HELLM_WEIGHT_PATH`
+  - `HELLM_NUM_GPU`
+  - `HELLM_BATCH_SIZE`
+  - `HELLM_EPOCHS`
+  - `HELLM_STEPS_PER_EPOCH`
+  - `HELLM_TRAIN_SUBSET`
+  - `HELLM_SEED`
+- Made HE eval task-selectable in `ciphertext/examples/bert-test.cpp`.
+- Added eval overrides:
+  - `HELLM_TASK`
+  - `HELLM_WEIGHT_PATH`
+  - `HELLM_LORA_PATH`
+  - `HELLM_EVAL_STEPS`
+- Rewrote `ciphertext/metric.py` so it no longer hardcodes MRPC paths.
+- Metric script now supports:
+  - `--task`
+  - `--pred-file`
+  - `--label-file`
+  - `--block-size`
+  - both normal and inverted binary-label metric output.
+- Verified build:
+  - `cmake --build build -j --target eval train`
+- Commit pushed:
+  - `93e6dfd feat: make HE task selection configurable`
+
+## Current Experiment State
+
+### RTE Fixed 5-Epoch Run
+
+- Active tmux session:
+  - `rte_epoch5_fixed`
+- Active log:
+  - `ciphertext/train_rte_epoch5_fixed_tmux.log`
+- Current run uses the fixed LoRA path logic that writes to `./data_2ly_rte/`.
+- Important evaluation plan:
+  - Wait until an epoch snapshot exists, e.g. `./data_2ly_rte/0epo/`.
+  - Evaluate that snapshot directly.
+  - Run metric script and compare both normal and inverted label interpretations.
+
+Example snapshot eval after epoch 0:
+
+```bash
+cd /home/jovyan/Encryption-friendly_LLM_Architecture/ciphertext
+export HELLM_KEY_PATH=./key
+HELLM_TASK=RTE ./build/bin/eval ./data_2ly_rte/0epo/
+```
+
+Example metric command:
+
+```bash
+cd /home/jovyan/Encryption-friendly_LLM_Architecture
+python ciphertext/metric.py --task rte --pred-file ciphertext/eval_rte_np1_277.log
+```
+
+## Current Usage Notes
+
+### Full RTE Train
+
+```bash
+cd /home/jovyan/Encryption-friendly_LLM_Architecture/ciphertext
+export HELLM_KEY_PATH=./key
+HELLM_TASK=RTE ./build/bin/train
+```
+
+### MRPC Train Without Source Edits
+
+```bash
+cd /home/jovyan/Encryption-friendly_LLM_Architecture/ciphertext
+export HELLM_KEY_PATH=./key
+HELLM_TASK=MRPC ./build/bin/train
+```
+
+### Small Deterministic Pilot
+
+```bash
+cd /home/jovyan/Encryption-friendly_LLM_Architecture/ciphertext
+export HELLM_KEY_PATH=./key
+HELLM_TASK=RTE HELLM_EPOCHS=5 HELLM_TRAIN_SUBSET=256 HELLM_STEPS_PER_EPOCH=256 HELLM_SEED=42 ./build/bin/train
+```
+
+## Known Issues / Follow-Ups
+
+- The currently running RTE full experiment is very slow; full 5 epochs may take much longer than initially expected.
+- The earlier MRPC result should not be used as a paper-comparable result because the run did not complete one full epoch.
+- The earlier RTE result should be rechecked using the fixed snapshot eval path and both normal/inverted metric outputs.
+- `ciphertext/convert.py` still contains local absolute paths.
+- `ciphertext/examples/convert2.cpp` is still task/path-specific and should eventually be made task-selectable like train/eval.
+- STS-B is not yet included in the generic task selection path because its labels are floating-point while the shared train path currently assumes classification labels.
